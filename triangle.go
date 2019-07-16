@@ -10,6 +10,10 @@ import (
 	"strings"
 )
 
+const (
+	firstNodeIndex = 1
+)
+
 type Triangulation struct {
 	Nodes    []Node
 	Segments []Segment
@@ -38,7 +42,7 @@ func (tr *Triangulation) createNodefile() (body string) {
 	body += fmt.Sprintf("%d 2 0 0\n", len(tr.Nodes))
 	for i := range tr.Nodes {
 		body += fmt.Sprintf("%d %14.6e %14.6e %d\n",
-			i+1, tr.Nodes[i].X, tr.Nodes[i].Y, tr.Nodes[i].Marker)
+			i+firstNodeIndex, tr.Nodes[i].X, tr.Nodes[i].Y, tr.Nodes[i].Marker)
 	}
 	return
 }
@@ -59,14 +63,17 @@ func (tr *Triangulation) createPolyfile() (body string) {
 	body += fmt.Sprintf("%d 1\n", len(tr.Segments))
 	for i := range tr.Segments {
 		body += fmt.Sprintf("%d %d %d %d\n",
-			i+1, tr.Segments[i].N1+1, tr.Segments[i].N2+1, tr.Segments[i].Marker)
+			i+firstNodeIndex,
+			tr.Segments[i].N1+firstNodeIndex,
+			tr.Segments[i].N2+firstNodeIndex,
+			tr.Segments[i].Marker)
 	}
 	body += "\n"
 
 	body += fmt.Sprintf("%d\n", len(tr.Holes))
 	for i := range tr.Holes {
 		body += fmt.Sprintf("%d %14.6e %14.6e\n",
-			i+1, tr.Holes[i].X, tr.Holes[i].Y)
+			i+firstNodeIndex, tr.Holes[i].X, tr.Holes[i].Y)
 	}
 
 	return
@@ -256,8 +263,8 @@ func Triangulate(tr *Triangulation) error {
 		if err := ioutil.WriteFile(polyfile, content, 0666); err != nil {
 			return err
 		}
-		flag = "-pq0L"
-		// 		flag = "-rpa.05"
+		// 		flag = "-pq0L"
+		flag = "-pq0La.25"
 	}
 
 	fmt.Println(flag) // TODO: remove
