@@ -59,8 +59,9 @@ func (tr *Triangulation) createPolyfile() (body string) {
 	body += fmt.Sprintf("%d 1\n", len(tr.Segments))
 	for i := range tr.Segments {
 		body += fmt.Sprintf("%d %d %d %d\n",
-			i+1, tr.Segments[i].N1, tr.Segments[i].N2, tr.Segments[i].Marker)
+			i+1, tr.Segments[i].N1+1, tr.Segments[i].N2+1, tr.Segments[i].Marker)
 	}
+	body += "\n"
 
 	body += fmt.Sprintf("%d\n", len(tr.Holes))
 	for i := range tr.Holes {
@@ -256,7 +257,10 @@ func Triangulate(tr *Triangulation) error {
 			return err
 		}
 		flag = "-pq0L"
+		// 		flag = "-rpa.05"
 	}
+
+	fmt.Println(flag) // TODO: remove
 
 	// execute Triangle
 	cmd := exec.Command("triangle", flag, filepath.Join(dir, "mesh"))

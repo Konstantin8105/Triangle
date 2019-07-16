@@ -121,16 +121,16 @@ func TestPoly(t *testing.T) {
 func TestPolySquare(t *testing.T) {
 	mesh := Triangulation{
 		Nodes: []Node{
-			{1, 0, 0},
-			{0, 1, 0},
-			{-1, 0, 0},
-			{0, -1, 0},
-			{0, 0, 0},
+			{1, 0, 0},  // 0
+			{0, 1, 0},  // 1
+			{-1, 0, 1}, // 2
+			{0, -1, 0}, // 3
+			{0, 0, 0},  // 4
 		},
 		Segments: []Segment{
-			{0, 1, 0},
+			{0, 1, 2},
 			{1, 2, 0},
-			{2, 3, 0},
+			{2, 3, 5},
 			{3, 0, 0},
 		},
 		Holes: []Node{},
