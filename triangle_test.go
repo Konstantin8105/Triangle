@@ -117,3 +117,29 @@ func TestPoly(t *testing.T) {
 	}
 	fmt.Println(mesh)
 }
+
+func TestPolySquare(t *testing.T) {
+	mesh := Triangulation{
+		Nodes: []Node{
+			{1, 0, 0},
+			{0, 1, 0},
+			{-1, 0, 0},
+			{0, -1, 0},
+			{0, 0, 0},
+		},
+		Segments: []Segment{
+			{0, 1, 0},
+			{1, 2, 0},
+			{2, 3, 0},
+			{3, 0, 0},
+		},
+		Holes: []Node{},
+	}
+
+	fmt.Println(mesh)
+	err := Triangulate(&mesh)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fmt.Println(mesh)
+}
