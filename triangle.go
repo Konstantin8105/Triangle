@@ -12,11 +12,18 @@ import (
 
 type Triangulation struct {
 	Nodes    []Node
+	Segments []Segment
+	Holes    []Node
 	Triangle [][]int
 }
 
 type Node struct {
 	X, Y   float64
+	Marker int
+}
+
+type Segment struct {
+	N1, N2 int
 	Marker int
 }
 
@@ -33,6 +40,34 @@ func (tr *Triangulation) createNodefile() (body string) {
 		body += fmt.Sprintf("%d %14.6e %14.6e %d\n",
 			i+1, tr.Nodes[i].X, tr.Nodes[i].Y, tr.Nodes[i].Marker)
 	}
+	return
+}
+
+// .poly files
+//
+// First line: <# of vertices> <dimension (must be 2)> <# of attributes> <# of boundary markers (0 or 1)>
+// Following lines: <vertex #> <x> <y> [attributes] [boundary marker]
+// One line: <# of segments> <# of boundary markers (0 or 1)>
+// Following lines: <segment #> <endpoint> <endpoint> [boundary marker]
+// One line: <# of holes>
+// Following lines: <hole #> <x> <y>
+// Optional line: <# of regional attributes and/or area constraints>
+// Optional following lines: <region #> <x> <y> <attribute> <maximum area>
+func (tr *Triangulation) createPolyfile() (body string) {
+	body += tr.createNodefile() + "\n"
+
+	body += fmt.Sprintf("%d 1\n", len(tr.Segments))
+	for i := range tr.Segments {
+		body += fmt.Sprintf("%d %d %d %d\n",
+			i+1, tr.Segments[i].N1, tr.Segments[i].N2, tr.Segments[i].Marker)
+	}
+
+	body += fmt.Sprintf("%d\n", len(tr.Holes))
+	for i := range tr.Holes {
+		body += fmt.Sprintf("%d %14.6e %14.6e\n",
+			i+1, tr.Holes[i].X, tr.Holes[i].Y)
+	}
+
 	return
 }
 
@@ -201,16 +236,30 @@ func Triangulate(tr *Triangulation) error {
 	}
 	// TODO : defer os.RemoveAll(dir) // clean up
 
-	var (
-		nodefile = filepath.Join(dir, "mesh.node")
-		content  = []byte(tr.createNodefile())
-	)
-	if err := ioutil.WriteFile(nodefile, content, 0666); err != nil {
-		return err
+	var flag string
+
+	if len(tr.Segments) == 0 {
+		var (
+			nodefile = filepath.Join(dir, "mesh.node")
+			content  = []byte(tr.createNodefile())
+		)
+		if err := ioutil.WriteFile(nodefile, content, 0666); err != nil {
+			return err
+		}
+	} else {
+		// Polyline
+		var (
+			polyfile = filepath.Join(dir, "mesh.poly")
+			content  = []byte(tr.createPolyfile())
+		)
+		if err := ioutil.WriteFile(polyfile, content, 0666); err != nil {
+			return err
+		}
+		flag = "-pq0L"
 	}
 
 	// execute Triangle
-	cmd := exec.Command("triangle", filepath.Join(dir, "mesh"))
+	cmd := exec.Command("triangle", flag, filepath.Join(dir, "mesh"))
 	if err := cmd.Run(); err != nil {
 		return err
 	}
@@ -218,7 +267,7 @@ func Triangulate(tr *Triangulation) error {
 	fmt.Println(dir) // TODO: remove
 
 	// read .node file
-	nodefile = filepath.Join(dir, "mesh.1.node")
+	nodefile := filepath.Join(dir, "mesh.1.node")
 	err = tr.readNodefile(nodefile)
 	if err != nil {
 		return err
