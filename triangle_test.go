@@ -80,7 +80,7 @@ func Test(t *testing.T) {
 	for _, tc := range tcs {
 		t.Run(tc.name, func(t *testing.T) {
 			fmt.Println(tc.mesh)
-			err := Triangulate(&tc.mesh)
+			err := tc.mesh.Run("")
 			if err != nil {
 				t.Fatal(err)
 			}

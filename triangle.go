@@ -236,15 +236,13 @@ func cleanAndRead(filename string) (content []byte, err error) {
 	return
 }
 
-func Triangulate(tr *Triangulation) error {
+func (tr *Triangulation) Run(flag string) error {
 	// create temp directory
 	dir, err := ioutil.TempDir("", "triangle")
 	if err != nil {
 		return err
 	}
-	// TODO : defer os.RemoveAll(dir) // clean up
-
-	var flag string
+	//defer os.RemoveAll(dir) // clean up
 
 	if len(tr.Segments) == 0 {
 		var (
@@ -254,17 +252,20 @@ func Triangulate(tr *Triangulation) error {
 		if err := ioutil.WriteFile(nodefile, content, 0666); err != nil {
 			return err
 		}
-	} else {
-		// Polyline
-		var (
-			polyfile = filepath.Join(dir, "mesh.poly")
-			content  = []byte(tr.createPolyfile())
-		)
-		if err := ioutil.WriteFile(polyfile, content, 0666); err != nil {
-			return err
-		}
-		// 		flag = "-pq0L"
-		flag = "-pq0La.25"
+	}
+
+	// Polyline
+	var (
+		polyfile = filepath.Join(dir, "mesh.poly")
+		content  = []byte(tr.createPolyfile())
+	)
+	if err := ioutil.WriteFile(polyfile, content, 0666); err != nil {
+		return err
+	}
+	if flag == "" {
+		// flag = "-pq0L"
+		flag = "-pq32.5L"
+		// flag = "-pcBeq0L"// a.05"
 	}
 
 	fmt.Println(flag) // TODO: remove
