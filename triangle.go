@@ -5,8 +5,11 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime/debug"
+	"strconv"
 	"strings"
 )
 
@@ -14,21 +17,59 @@ const (
 	firstNodeIndex = 1
 )
 
+var Debug = false
+
+// Triangulation is input/output mesh
 type Triangulation struct {
-	Nodes    []Node
-	Segments []Segment
-	Holes    []Node
-	Triangle [][]int
+	Nodes     []Node
+	Segments  []Segment
+	Holes     []Node
+	Triangles []Triangle
+	Regions   []Node
 }
 
+// String return typical string result
+func (t Triangulation) String() string {
+	var out string
+	for i, n := range t.Nodes {
+		out += fmt.Sprintf("Node     %03d: {%+12e %+12e} %3d\n",
+			i, n.X, n.Y, n.Marker)
+	}
+	for i, s := range t.Segments {
+		out += fmt.Sprintf("Segment  %03d: {%03d %03d} %3d\n",
+			i, s.NodeIndexes[0], s.NodeIndexes[1], s.Marker)
+	}
+	for i, n := range t.Holes {
+		out += fmt.Sprintf("Hole     %03d: {%+12e %+12e} %3d\n",
+			i, n.X, n.Y, n.Marker)
+	}
+	for i, t := range t.Triangles {
+		out += fmt.Sprintf("Triangle %03d: {%03d %03d %03d} %3d\n",
+			i, t.NodeIndexes[0], t.NodeIndexes[1], t.NodeIndexes[2], t.Marker)
+	}
+	for i, n := range t.Regions {
+		out += fmt.Sprintf("Region   %03d: {%+12e %+12e} %3d\n",
+			i, n.X, n.Y, n.Marker)
+	}
+	return out
+}
+
+// Triangle is triangle between 3 points
+type Triangle struct {
+	NodeIndexes [3]int
+	Marker      int
+}
+
+// Node is 2D coordinate {X,Y}
 type Node struct {
 	X, Y   float64
 	Marker int
 }
 
+// Segment is line between 2 points
 type Segment struct {
-	N1, N2 int
-	Marker int
+	NodeIndexes [2]int
+	Marker      int
 }
 
 // .node files
@@ -39,7 +80,7 @@ type Segment struct {
 //
 // See: https://www.cs.cmu.edu/~quake/triangle.node.html
 func (tr *Triangulation) createNodefile() (body string) {
-	body += fmt.Sprintf("%d 2 0 0\n", len(tr.Nodes))
+	body += fmt.Sprintf("%d 2 0 1\n", len(tr.Nodes))
 	for i := range tr.Nodes {
 		body += fmt.Sprintf("%d %14.6e %14.6e %d\n",
 			i+firstNodeIndex, tr.Nodes[i].X, tr.Nodes[i].Y, tr.Nodes[i].Marker)
@@ -64,8 +105,8 @@ func (tr *Triangulation) createPolyfile() (body string) {
 	for i := range tr.Segments {
 		body += fmt.Sprintf("%d %d %d %d\n",
 			i+firstNodeIndex,
-			tr.Segments[i].N1+firstNodeIndex,
-			tr.Segments[i].N2+firstNodeIndex,
+			tr.Segments[i].NodeIndexes[0]+firstNodeIndex,
+			tr.Segments[i].NodeIndexes[1]+firstNodeIndex,
 			tr.Segments[i].Marker)
 	}
 	body += "\n"
@@ -74,6 +115,12 @@ func (tr *Triangulation) createPolyfile() (body string) {
 	for i := range tr.Holes {
 		body += fmt.Sprintf("%d %14.6e %14.6e\n",
 			i+firstNodeIndex, tr.Holes[i].X, tr.Holes[i].Y)
+	}
+
+	body += fmt.Sprintf("%d\n", len(tr.Regions))
+	for i := range tr.Regions {
+		body += fmt.Sprintf("%d %14.6e %14.6e %d\n",
+			i+firstNodeIndex, tr.Regions[i].X, tr.Regions[i].Y, tr.Regions[i].Marker)
 	}
 
 	return
@@ -142,7 +189,13 @@ func (tr *Triangulation) readNodefile(filename string) (err error) {
 func (tr *Triangulation) readElefile(filename string) (err error) {
 	defer func() {
 		if err != nil {
-			err = fmt.Errorf("cannot read .ele file: %v", err)
+			err = fmt.Errorf("cannot read .ele file `%s`: %v",
+				filename, err)
+		}
+	}()
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("%s", string(debug.Stack()))
 		}
 	}()
 	content, err := cleanAndRead(filename)
@@ -156,12 +209,17 @@ func (tr *Triangulation) readElefile(filename string) (err error) {
 		return fmt.Errorf("file is empty")
 	}
 
+	integer := func(value string) (int, error) {
+		i64, err := strconv.ParseInt(value, 10, 64)
+		return int(i64), err
+	}
+
 	var amountPoints int
 	for i := range lines {
 		if len(strings.TrimSpace(lines[i])) == 0 {
 			continue
 		}
-		// First line
+		// first line
 		if i == 0 {
 			var size int
 			var attributes int
@@ -169,35 +227,26 @@ func (tr *Triangulation) readElefile(filename string) (err error) {
 			if err != nil && err != io.EOF {
 				return err
 			}
-			tr.Triangle = make([][]int, size)
-			for i := 0; i < size; i++ {
-				tr.Triangle[i] = make([]int, amountPoints)
-			}
+			tr.Triangles = make([]Triangle, size)
 			continue
 		}
-		// Next lines
-		var position int
-		items := strings.Split(lines[i], " ")
-		var counter int
-		for j := range items {
-			item := strings.TrimSpace(items[j])
-			if len(item) == 0 {
-				continue
+
+		// next lines
+		fs := strings.Fields(lines[i])
+		var vs []int
+		for i := range fs {
+			var t int
+			t, err = integer(fs[i])
+			if err != nil {
+				return
 			}
-			counter++
-			var value int
-			n, err := fmt.Sscanf(item, "%d", &value)
-			if err != nil && err != io.EOF {
-				return err
-			}
-			if n == 0 {
-				return fmt.Errorf("n == 0")
-			}
-			if counter == 1 {
-				position = value
-				continue
-			}
-			tr.Triangle[position-1][counter-2] = value
+			vs = append(vs, t)
+		}
+		tr.Triangles[vs[0]-1] = Triangle{
+			NodeIndexes: [3]int{vs[1], vs[2], vs[3]},
+		}
+		if 4 < len(vs) {
+			tr.Triangles[vs[0]-1].Marker = vs[4]
 		}
 	}
 	return nil
@@ -242,7 +291,9 @@ func (tr *Triangulation) Run(flag string) error {
 	if err != nil {
 		return err
 	}
-	//defer os.RemoveAll(dir) // clean up
+	if !Debug {
+		defer os.RemoveAll(dir) // clean up
+	}
 
 	if len(tr.Segments) == 0 {
 		var (
@@ -263,12 +314,12 @@ func (tr *Triangulation) Run(flag string) error {
 		return err
 	}
 	if flag == "" {
-		// flag = "-pq0L"
-		flag = "-pq32.5L"
-		// flag = "-pcBeq0L"// a.05"
+		// flag = "-pq32.5a0.2ABPYXs"
+		// flag = "-pq32.5AX"
+		// flag = "-pA"
+		 flag = "-pqa0.2AYs"
+		// flag = "-pcABeq0L"// a.05"
 	}
-
-	fmt.Println(flag) // TODO: remove
 
 	// execute Triangle
 	cmd := exec.Command("triangle", flag, filepath.Join(dir, "mesh"))
@@ -276,7 +327,9 @@ func (tr *Triangulation) Run(flag string) error {
 		return err
 	}
 
-	fmt.Println(dir) // TODO: remove
+	if Debug {
+		fmt.Fprintf(os.Stdout, "templorary dir = `%s`\n", dir)
+	}
 
 	// read .node file
 	nodefile := filepath.Join(dir, "mesh.1.node")
