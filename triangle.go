@@ -126,6 +126,23 @@ func (tr *Triangulation) createPolyfile() (body string) {
 	return
 }
 
+func (tr *Triangulation) readPolyfile(filename string) (err error) {
+	defer func() {
+		if err != nil {
+			err = fmt.Errorf("cannot read .poly file: %v", err)
+		}
+	}()
+	content, err := cleanAndRead(filename)
+	if err != nil {
+		return err
+	}
+
+	// TODO err = fmt.Errorf("not implemented")
+	fmt.Println(string(content))
+
+	return
+}
+
 func (tr *Triangulation) readNodefile(filename string) (err error) {
 	defer func() {
 		if err != nil {
@@ -291,7 +308,9 @@ func (tr *Triangulation) Run(flag string) error {
 	if err != nil {
 		return err
 	}
-	if !Debug {
+	if Debug {
+		fmt.Fprintf(os.Stdout, "templorary dir = `%s`\n", dir)
+	} else {
 		defer os.RemoveAll(dir) // clean up
 	}
 
@@ -305,7 +324,7 @@ func (tr *Triangulation) Run(flag string) error {
 		}
 	}
 
-	// Polyline
+	// polyfile
 	var (
 		polyfile = filepath.Join(dir, "mesh.poly")
 		content  = []byte(tr.createPolyfile())
@@ -317,33 +336,24 @@ func (tr *Triangulation) Run(flag string) error {
 		// flag = "-pq32.5a0.2ABPYXs"
 		// flag = "-pq32.5AX"
 		// flag = "-pA"
-		 flag = "-pqa0.2AYs"
+		// flag = "-pqa0.2AYs"
+		flag = "-pqa0.2AYs"
 		// flag = "-pcABeq0L"// a.05"
 	}
-
 	// execute Triangle
 	cmd := exec.Command("triangle", flag, filepath.Join(dir, "mesh"))
 	if err := cmd.Run(); err != nil {
 		return err
 	}
-
-	if Debug {
-		fmt.Fprintf(os.Stdout, "templorary dir = `%s`\n", dir)
+	// reading result files
+	for _, err := range []error{
+		tr.readNodefile(filepath.Join(dir, "mesh.1.node")),
+		tr.readPolyfile(filepath.Join(dir, "mesh.1.poly")),
+		tr.readElefile(filepath.Join(dir, "mesh.1.ele")),
+	} {
+		if err != nil {
+			return err
+		}
 	}
-
-	// read .node file
-	nodefile := filepath.Join(dir, "mesh.1.node")
-	err = tr.readNodefile(nodefile)
-	if err != nil {
-		return err
-	}
-
-	// read .ele file
-	elefile := filepath.Join(dir, "mesh.1.ele")
-	err = tr.readElefile(elefile)
-	if err != nil {
-		return err
-	}
-
 	return nil
 }
